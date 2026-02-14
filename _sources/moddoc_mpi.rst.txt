@@ -1,61 +1,71 @@
----
-mpi
----
+.. include:: intro_mpi.rst
 
-mpi contains several modules build to interface with HPC systems using the installed MPI library (through mpi4py). This comes in two pieces: parallelization of frame processing and accumulation.
+API Documentation
+=================
 
-Frame IO Parallelization
-========================
+.. contents:: Contents
+   :depth: 1
+   :local:
 
-The MPIFileIO sub-module contains a few modules that will add frame-level parallelism to a G3Pipeline by reading files within an observation in parallel and (optionally, with MPIIODistributor or MPIFrameParallelizer) distributes the data frame-by-frame across any number of processes with an M:N IO:CPU node distribution.
-
-This processing will make sure all metadata frames are seen by all processes in the same order with respect to both each other and all data frames and are thus strongly ordered across all processes. Data frames (scans, typically) are ordered on a node, but are not ordered between nodes and thus should be considered weakly ordered. For a frame sequence MN12345PQ67, where letters denote metadata frames (calibration, etc.) and numbers data frames, a possible ordering seen by the pipelines on two processing nodes would be MN134PQ7 and MN25PQ6, respectively. A consequence of these ordering rules is that you *must not use any modules that depend on frame ordering and continuity*. Examples of such would be modules that buffer multiple scans together to get longer-time-period data; by their nature, these only work for observation-level parallelism, rather than frame-level or file-level.
-
-Parallelization in this sense can be achieved by replacement of G3Reader in a normal G3Pipeline with MPIIODistributor.
-
-Frame Accumulation
-==================
-
-At the end of a sequence of parallel pipelines, you in general want to join the data from all the processes in the communicator back together again. Typical cases are stitching processed scans back together again, for example to feed to a maximum-likelihood map-maker or some other algorithm that needs very large quantities of distributed data, or doing a parallel reduction, for example by coadding map frames produced by N parallel map-makers.
-
-The first of these cases (restitching an observation processed on many parallel processes) is more complicated than the second, so this library provides a helper module (MPIAccumulator) that does it for you, placing the result in a member variable inspected after the pipelines end.
-
-The second case is easier, but potentially common enough that a module should be added in future.
-
-Interface to TOAST
-==================
-
-There is an experimental module (TOASTFiller) that uses MPIAccumulator to fill frame contents after processing in many parallel pipelines into a TOAST TOD object in order to use TOAST's set of parallel timestream algorithms and map-making. Basic functionality is present, but it should be considered in-development at present.
-
-Modules in spt3g.mpi
-====================
-* spt3g.mpi.MPIFileIO.MPIIODistributor_
+Class-like Pipeline Modules
+---------------------------
 
 
-.. _spt3g.mpi.MPIFileIO.MPIIODistributor:
+Classes that can be added to :py:class:`~spt3g.core.G3Pipeline`
+instances, either written as callable objects in Python (see
+:ref:`class-modules`) or as :py:class:`~spt3g.core.G3Module`-derived
+classes in C++ (see :ref:`cxx-modules`).  Aside from adding these into
+pipelines using the standard ``Add()`` method, such objects may also be
+instantiated outside of pipelines to make use of additional features.
 
-**spt3g.mpi.MPIFileIO.MPIIODistributor**
+One typical use case is to extract some kind of data from a series of
+frames::
+
+    class ExtractData:
+        def __init__(self, key="RawTimestreams"):
+            self.key = key
+            self.data = []
+        def __call__(self, frame):
+            if self.key in frame:
+                self.data.append(frame[self.key])
+
+    # instantiate caching class
+    extractor = ExtractData()
+
+    # use instance in a pipeline
+    pipe = core.G3Pipeline()
+    pipe.Add(core.G3Reader, filename="file.g3")
+    pipe.Add(extractor)
+    pipe.Run()
+
+    # use extracted data in later processing
+    print(extractor.data)
+
+Another use case may be to call additional methods of a class.  For
+example, the :py:class:`~spt3g.core.G3Writer` class can be used as a
+context manager, and also report the position of the file pointer after
+each frame is written::
+
+    with core.G3Writer("file.g3") as writer:
+        for frame in frames:
+            writer(frame)
+            print("Bytes written:", writer.tell())
+
+Class-like modules permit a variety of additional features beyond
+their standard usage in pipelines.
 
 
-Read files from disk using the first n_io processes in mpicomm (COMM_WORLD
-by default), with processing of frames in those files occurring on the other
-processes in mpicomm. See documentation for MPIFileReader for the format of
-the files argument and MPIFrameParallelizer for information on the semantics
-of processing. Add this as the first module in your pipeline in place of
-core.G3Reader.
+.. autoclass:: spt3g.mpi.MPIAccumulator.MPIAccumulator
 
+.. autoclass:: spt3g.mpi.MPIFileIO.MPIFileReader
 
+.. autoclass:: spt3g.mpi.MPIFileIO.MPIFrameParallelizer
 
-*Equivalent to:*
+Pipeline Segments
+-----------------
 
-.. code-block:: python
+Python functions that combine a sequence of pipeline modules, and can be added to :py:class:`~spt3g.core.G3Pipeline` instances. See :ref:`pipesegments` for more detail.
 
-    Exception evaluating equivalence (No module named 'mpi4py')
-
-
-
-*Definition:*
-        ``MPIIODistributor(pipe, mpicomm=None, n_io=10, files=[])``
-
+.. autofunction:: spt3g.mpi.MPIFileIO.MPIIODistributor
 
 
