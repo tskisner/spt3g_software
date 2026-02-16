@@ -215,6 +215,7 @@ install(EXPORT ${PROJECT_NAME}Config
 install(FILES
 	"${CMAKE_BINARY_DIR}/cmake-install/Spt3gConfig.cmake"
 	"${CMAKE_SOURCE_DIR}/cmake/FindFLAC.cmake"
+    "${CMAKE_SOURCE_DIR}/cmake/Findflacarray.cmake"
 	"${CMAKE_SOURCE_DIR}/cmake/FindNetCDF.cmake"
 	"${CMAKE_SOURCE_DIR}/cmake/FindOgg.cmake"
 	DESTINATION ${CMAKE_INSTALL_DIR})
