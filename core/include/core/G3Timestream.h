@@ -108,7 +108,7 @@ public:
 	double GetSampleRate() const;
 	uint8_t GetFLACCompression() const{ return use_flac_; }
 	uint8_t GetFLACBitDepth() const { return flac_depth_; }
-	
+
 	template <class A> void load(A &ar, unsigned v);
 	template <class A> void save(A &ar, unsigned v) const;
 
@@ -151,7 +151,7 @@ private:
 		TS_INT64
 	};
 	DataType data_type_;
-	
+
 	template<typename T>
 	struct TimeStreamTypeResolver{
 		static_assert(sizeof(T)!=sizeof(T), "Unsupported datatype for G3Timestream");
@@ -221,7 +221,7 @@ public:
 	// and requires timestream alignment (throws exception if
 	// CheckAlignment is false).
 	void Compactify();
-	
+
 	/// Construct a map whose underlying data storage is a contiguous 2D block.
 	/// \param keys the timestream keys for which the map should be constructed
 	/// \param start the start time which will be shared by all time streams
@@ -282,14 +282,16 @@ public:
 		}
 	}
 
-	template <class A> void serialize(A &ar, unsigned v);
+	template <class A> void load(A &ar, unsigned v);
+	template <class A> void save(A &ar, unsigned v) const;
+
 	std::string Description() const;
 };
 
 G3_POINTERS(G3TimestreamMap);
 
 G3_SPLIT_SERIALIZABLE(G3Timestream, 4);
-G3_SERIALIZABLE(G3TimestreamMap, 3);
+G3_SPLIT_SERIALIZABLE(G3TimestreamMap, 4);
 
 #endif
 

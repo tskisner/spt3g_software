@@ -57,7 +57,7 @@ static FLAC__StreamDecoderReadStatus flac_decoder_read_cb(
 		return FLAC__STREAM_DECODER_READ_STATUS_CONTINUE;
 	}
 }
-  
+
 template<typename A>
 static FLAC__StreamDecoderWriteStatus flac_decoder_write_cb(
     const FLAC__StreamDecoder *decoder, const FLAC__Frame *frame,
@@ -72,7 +72,7 @@ static FLAC__StreamDecoderWriteStatus flac_decoder_write_cb(
 		(*args->outbuf)[oldsize + i] = buffer[0][i];
 	return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;
 }
-  
+
 static void flac_decoder_error_cb(const FLAC__StreamDecoder *decoder,
     FLAC__StreamDecoderErrorStatus status, void *client_data)
 {
@@ -739,6 +739,89 @@ std::string G3Timestream::Description() const
 	return desc.str();
 }
 
+template <class A> void G3TimestreamMap::save(A &ar, unsigned v) const
+{
+	G3_CHECK_VERSION(v);
+
+	ar & cereal::make_nvp("G3FrameObject",
+		cereal::base_class<G3FrameObject>(this));
+
+
+	if (v < 3) {
+		std::map<std::string, G3Timestream> oldmap;
+		ar & cereal::make_nvp("map", oldmap);
+		for (auto i = oldmap.begin(); i != oldmap.end(); i++)
+			this->insert(std::pair<std::string, G3TimestreamPtr>(
+			    i->first, G3TimestreamPtr(new G3Timestream(
+			    i->second))));
+	} else {
+		// Serialize the G3Timestreams in a threaded manner
+
+		ar & cereal::make_nvp("map",
+		    cereal::base_class<OrderedMap<std::string,
+		    G3TimestreamPtr> >(this));
+	}
+	if (v < 2) {
+		// Load old timestreams with start/stop in the map instead of
+		// the individual timestreams.
+		G3Time start, stop;
+		ar & cereal::make_nvp("start", start);
+		ar & cereal::make_nvp("stop", stop);
+		for (auto i = begin(); i != end(); i++) {
+			i->second->start = start;
+			i->second->stop = stop;
+		}
+	}
+
+}
+
+
+#pragma omp parallel
+	{
+		// Each OMP thread needs its own workspace, FLAC decoder, and helper structure
+		std::unique_ptr<char []> temp(new char[nsamp * elsize + 1]);
+		FLAC__StreamDecoder *decoder = nullptr;
+		struct flac_helper helper;
+
+#pragma omp for
+
+template <class A> void G3TimestreamMap::load(A &ar, unsigned v)
+{
+	G3_CHECK_VERSION(v);
+
+	ar & cereal::make_nvp("G3FrameObject",
+		cereal::base_class<G3FrameObject>(this));
+	if (v < 4) {
+		if (v < 3) {
+			std::map<std::string, G3Timestream> oldmap;
+			ar & cereal::make_nvp("map", oldmap);
+			for (auto i = oldmap.begin(); i != oldmap.end(); i++)
+				this->insert(std::pair<std::string, G3TimestreamPtr>(
+					i->first, G3TimestreamPtr(new G3Timestream(
+					i->second))));
+		} else {
+			// Serialize the G3Timestreams in a threaded manner
+
+			ar & cereal::make_nvp("map",
+				cereal::base_class<OrderedMap<std::string,
+				G3TimestreamPtr> >(this));
+		}
+		if (v < 2) {
+			// Load old timestreams with start/stop in the map instead of
+			// the individual timestreams.
+			G3Time start, stop;
+			ar & cereal::make_nvp("start", start);
+			ar & cereal::make_nvp("stop", stop);
+			for (auto i = begin(); i != end(); i++) {
+				i->second->start = start;
+				i->second->stop = stop;
+			}
+		}
+	} else {
+
+	}
+}
+
 template <class A> void G3TimestreamMap::serialize(A &ar, unsigned v)
 {
 	G3_CHECK_VERSION(v);
@@ -753,6 +836,8 @@ template <class A> void G3TimestreamMap::serialize(A &ar, unsigned v)
 			    i->first, G3TimestreamPtr(new G3Timestream(
 			    i->second))));
 	} else {
+		// Serialize the G3Timestreams in a threaded manner
+
 		ar & cereal::make_nvp("map",
 		    cereal::base_class<OrderedMap<std::string,
 		    G3TimestreamPtr> >(this));
