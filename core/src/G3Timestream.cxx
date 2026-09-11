@@ -746,6 +746,26 @@ template <class A> void G3TimestreamMap::save(A &ar, unsigned v) const
 	ar & cereal::make_nvp("G3FrameObject",
 		cereal::base_class<G3FrameObject>(this));
 
+	uint8_t is_compact;
+	if (CheckCompact()) {
+		is_compact = 1;
+	} else{
+		is_compact = 0;
+	}
+	ar & cereal::make_nvp("is_compact", is_compact);
+
+	if (is_compact) {
+		// We have a contiguous buffer.  Serialize the individual G3Timestreams
+		// so that we have the possibility of decompressing these in a threaded
+		// manner.
+
+	} else {
+		// Non-contiguous.  Just recursively serialize the whole container.
+		ar & cereal::make_nvp("map",
+		    cereal::base_class<OrderedMap<std::string,
+		    G3TimestreamPtr> >(this));
+	}
+
 
 	if (v < 3) {
 		std::map<std::string, G3Timestream> oldmap;
@@ -884,6 +904,52 @@ bool G3TimestreamMap::CheckAlignment() const
 	return true;
 }
 
+bool G3TimestreamMap::CheckCompact() const
+{
+	bool is_compact = true;
+	std::shared_ptr<void> first_root;
+	void *expected_base = NULL;
+	for (auto & i : *this) {
+		// Not compact if any using internal storage
+		if (!i.second->root_data_ref_) {
+			is_compact = false;
+			break;
+		}
+		if (!first_root)
+			first_root = i.second->root_data_ref_;
+		// or if they are using *different* internal storage
+		if (i.second->root_data_ref_ != first_root) {
+			is_compact = false;
+			break;
+		}
+		// or if they are not in order
+		size_t element_size = 0;
+		switch (i.second->data_type_) {
+		case G3Timestream::TS_DOUBLE:
+		case G3Timestream::TS_INT64:
+			element_size = 8;
+			break;
+		case G3Timestream::TS_FLOAT:
+		case G3Timestream::TS_INT32:
+			element_size = 4;
+			break;
+		default:
+			log_fatal("Unknown timestream datatype %d", i.second->data_type_);
+		}
+		if (expected_base != NULL && i.second->data_ != expected_base) {
+			is_compact = false;
+			break;
+		}
+		expected_base = (uint8_t *)i.second->data_ +
+		    element_size*i.second->size();
+	}
+	if (is_compact || size() == 0) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
 G3Time G3TimestreamMap::GetStartTime() const
 {
 	if (begin() == end())
@@ -985,45 +1051,9 @@ void G3TimestreamMap::SetFLACBitDepth(int bit_depth)
 void G3TimestreamMap::Compactify()
 {
 	// Check if already compacted
-	bool is_compact = true;
-	std::shared_ptr<void> first_root;
-	void *expected_base = NULL;
-	for (auto & i : *this) {
-		// Not compact if any using internal storage
-		if (!i.second->root_data_ref_) {
-			is_compact = false;
-			break;
-		}
-		if (!first_root)
-			first_root = i.second->root_data_ref_;
-		// or if they are using *different* internal storage
-		if (i.second->root_data_ref_ != first_root) {
-			is_compact = false;
-			break;
-		}
-		// or if they are not in order
-		size_t element_size = 0;
-		switch (i.second->data_type_) {
-		case G3Timestream::TS_DOUBLE:
-		case G3Timestream::TS_INT64:
-			element_size = 8;
-			break;
-		case G3Timestream::TS_FLOAT:
-		case G3Timestream::TS_INT32:
-			element_size = 4;
-			break;
-		default:
-			log_fatal("Unknown timestream datatype %d", i.second->data_type_);
-		}
-		if (expected_base != NULL && i.second->data_ != expected_base) {
-			is_compact = false;
-			break;
-		}
-		expected_base = (uint8_t *)i.second->data_ +
-		    element_size*i.second->size();
-	}
-	if (is_compact || size() == 0)
+	if (CheckCompact()) {
 		return;
+	}
 
 	// Check if timestreams aligned; if not, they can't be compacted
 	if (!CheckAlignment())
@@ -1092,7 +1122,7 @@ void G3TimestreamMap::Compactify()
 }
 
 G3_SPLIT_SERIALIZABLE_CODE(G3Timestream);
-G3_SERIALIZABLE_CODE(G3TimestreamMap);
+G3_SPLIT_SERIALIZABLE_CODE(G3TimestreamMap);
 
 static void
 G3Timestream_assert_congruence(const G3Timestream &a, const G3Timestream &b)
@@ -1555,6 +1585,7 @@ PYBINDINGS("core", scope) {
 	    .def_buffer(&G3Timestream::G3TimestreamPythonHelpers::tsmap_buffer_info)
 	    .def(g3frameobject_picklesuite<G3TimestreamMap>())
 	    .def("CheckAlignment", &G3TimestreamMap::CheckAlignment)
+		.def("CheckCompact", &G3TimestreamMap::CheckCompact)
 	    .def("Compactify", &G3TimestreamMap::Compactify,
 	       "If member timestreams are stored non-contiguously, repack all "
 	       "data into a contiguous block. Requires timestreams be aligned "

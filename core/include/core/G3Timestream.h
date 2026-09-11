@@ -109,6 +109,8 @@ public:
 	uint8_t GetFLACCompression() const{ return use_flac_; }
 	uint8_t GetFLACBitDepth() const { return flac_depth_; }
 
+	void CompressFLAC()
+
 	template <class A> void load(A &ar, unsigned v);
 	template <class A> void save(A &ar, unsigned v) const;
 
@@ -221,6 +223,7 @@ public:
 	// and requires timestream alignment (throws exception if
 	// CheckAlignment is false).
 	void Compactify();
+    bool CheckCompact() const;
 
 	/// Construct a map whose underlying data storage is a contiguous 2D block.
 	/// \param keys the timestream keys for which the map should be constructed
